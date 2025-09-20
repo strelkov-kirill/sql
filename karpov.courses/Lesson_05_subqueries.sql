@@ -242,3 +242,64 @@ WHERE order_id IN (SELECT order_id FROM orders WHERE ARRAY_LENGTH(product_ids, 1
 order_id NOT IN (SELECT order_id FROM user_actions WHERE action = 'cancel_order')
 GROUP BY order_id
 ORDER BY order_id
+-- Задание 20:
+-- Для каждой даты в таблице user_actions посчитайте количество первых заказов, 
+-- совершённых пользователями. Первыми заказами будем считать заказы, которые пользователи 
+-- сделали в нашем сервисе впервые. В расчётах учитывайте только неотменённые заказы.
+-- В результат включите две колонки: дату и количество первых заказов в эту дату. 
+-- Колонку с датами назовите date, а колонку с первыми заказами — first_orders.
+-- Результат отсортируйте по возрастанию даты.
+-- Поля в результирующей таблице: date, first_orders
+WITH first_ord AS (
+    SELECT user_id, MIN(time)::DATE AS first_order_date
+    FROM user_actions 
+    WHERE order_id NOT IN(
+        SELECT order_id
+        FROM user_actions 
+        WHERE action = 'cancel_order')
+    GROUP BY user_id)
+ 
+SELECT first_order_date AS date,  COUNT(user_id) AS first_orders
+FROM first_ord
+GROUP BY date
+ORDER BY date
+-- Задание 21:
+-- Выберите все колонки из таблицы orders и дополнительно в качестве последней колонки укажите 
+-- функцию unnest, применённую к колонке product_ids. Эту последнюю колонку назовите product_id. 
+-- Больше ничего с данными делать не нужно. Добавьте в запрос оператор LIMIT и выведите только 
+-- первые 100 записей результирующей таблицы. Поля в результирующей таблице: 
+-- creation_time, order_id, product_ids, product_id
+SELECT creation_time, order_id, product_ids, UNNEST(product_ids) product_id
+FROM orders
+LIMIT 100
+-- Задание 22:
+-- Используя функцию unnest, определите 10 самых популярных товаров в таблице orders. Самыми 
+-- популярными товарами будем считать те, которые встречались в заказах чаще всего. 
+-- Если товар встречается в одном заказе несколько раз (когда было куплено несколько единиц товара),
+-- это тоже учитывается при подсчёте. Учитывайте только неотменённые заказы.
+-- Выведите id товаров и то, сколько раз они встречались в заказах (то есть сколько раз были куплены).
+-- Новую колонку с количеством покупок товаров назовите times_purchased.
+-- Результат отсортируйте по возрастанию id товара.
+-- Поля в результирующей таблице: product_id, times_purchased
+WITH t1 AS (SELECT UNNEST(product_ids) AS product_id, COUNT(order_id) AS times_purchased
+FROM orders
+WHERE order_id NOT IN (SELECT order_id FROM user_actions WHERE action = 'cancel_order')
+GROUP BY product_id
+ORDER BY times_purchased DESC
+LIMIT 10)
+SELECT product_id, times_purchased
+FROM t1
+ORDER BY product_id
+-- Задание 23:
+-- Из таблицы orders выведите id и содержимое заказов, которые включают хотя бы один из пяти 
+-- самых дорогих товаров, доступных в нашем сервисе.Результат отсортируйте по возрастанию id заказа.
+-- Поля в результирующей таблице: order_id, product_ids
+WITH top_price AS (SELECT product_id 
+FROM products 
+ORDER BY price DESC 
+LIMIT 5), unnest AS (SELECT order_id, product_ids, UNNEST(product_ids) AS product_id FROM orders)
+
+SELECT DISTINCT order_id, product_ids
+FROM unnest
+WHERE product_id IN (SELECT product_id FROM top_price)
+ORDER BY order_id
