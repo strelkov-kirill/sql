@@ -112,3 +112,24 @@ ORDER BY user_id, order_id) t1
 GROUP BY user_id
 HAVING AVG((EXTRACT(epoch FROM time_diff)::DECIMAL/3600))::INTEGER IS NOT NULL
 LIMIT 1000
+-- Задание 8:
+-- Сначала на основе таблицы orders сформируйте новую таблицу с общим числом заказов по дням.
+-- При подсчёте числа заказов не учитывайте отменённые заказы. Колонку с числом заказов 
+-- назовите orders_count. Затем поместите полученную таблицу в подзапрос и примените к ней оконную
+-- функцию в паре с агрегирующей функцией AVG для расчёта скользящего среднего числа заказов.
+-- Скользящее среднее для каждой записи считайте по трём предыдущим дням. Подумайте, как правильно
+-- задать границы рамки, чтобы получить корректные расчёты.
+-- Полученные значения скользящего среднего округлите до двух знаков после запятой. 
+-- Колонку с рассчитанным показателем назовите moving_avg. Сортировку результирующей таблицы 
+-- делать не нужно. Поля в результирующей таблице: date, orders_count, moving_avg
+SELECT date, orders_count, ROUND(AVG(orders_count) OVER(ORDER BY date
+                                                ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING), 2) AS moving_avg
+FROM
+(SELECT date, orders_count,
+    sum(orders_count) OVER(ORDER BY date)::integer as orders_count_cumulative
+FROM   (SELECT creation_time::date as date, count(order_id) as orders_count
+        FROM   orders
+        WHERE  order_id not in (SELECT order_id
+                                FROM   user_actions
+                                WHERE  action = 'cancel_order')
+        GROUP BY 1) t1) t2
