@@ -133,3 +133,205 @@ FROM   (SELECT creation_time::date as date, count(order_id) as orders_count
                                 FROM   user_actions
                                 WHERE  action = 'cancel_order')
         GROUP BY 1) t1) t2
+-- Задание 9:
+--Отметьте в отдельной таблице тех курьеров, которые доставили в сентябре 2022 года заказов 
+--больше, чем в среднем все курьеры. Сначала для каждого курьера в таблице courier_actions 
+--рассчитайте общее количество доставленных в сентябре заказов. Затем в отдельном столбце с 
+--помощью оконной функции укажите, сколько в среднем заказов доставили в этом месяце все курьеры. 
+--После этого сравните число заказов, доставленных каждым курьером, со средним значением в 
+--новом столбце. Если курьер доставил больше заказов, чем в среднем все курьеры, то в отдельном 
+--столбце с помощью CASE укажите число 1, в противном случае укажите 0.
+--Колонку с результатом сравнения назовите is_above_avg, колонку с числом доставленных заказов 
+--каждым курьером — delivered_orders, а колонку со средним значением — avg_delivered_orders. 
+--При расчёте среднего значения округлите его до двух знаков после запятой. Результат 
+--отсортируйте по возрастанию id курьера.
+--Поля в результирующей таблице: courier_id, delivered_orders, avg_delivered_orders, is_above_avg
+SELECT courier_id, COUNT(order_id) as delivered_orders,
+ROUND(AVG(COUNT(order_id)) OVER(), 2) as avg_delivered_orders,
+CASE WHEN COUNT(order_id) > ROUND(AVG(COUNT(order_id)) OVER(), 2) THEN 1 ELSE 0 END AS is_above_avg
+FROM courier_actions
+WHERE action = 'deliver_order' AND time BETWEEN '2022-09-01' AND '2022-10-01'
+GROUP BY courier_id
+ORDER BY courier_id
+-- Задание 10:
+-- По данным таблицы user_actions посчитайте число первых и повторных заказов на каждую дату.
+-- Для этого сначала с помощью оконных функций и оператора CASE сформируйте таблицу, в которой 
+-- напротив каждого заказа будет стоять отметка «Первый» или «Повторный» (без кавычек). Для каждого
+-- пользователя первым заказом будет тот, который был сделан раньше всего. Все остальные заказы должны
+-- попасть, соответственно, в категорию «Повторный». Затем на каждую дату посчитайте число заказов 
+-- каждой категории. Колонку с типом заказа назовите order_type, колонку с датой — date, колонку 
+-- с числом заказов — orders_count. В расчётах учитывайте только неотменённые заказы.
+-- Результат отсортируйте сначала по возрастанию даты, затем по возрастанию значений в колонке
+-- с типом заказа. Поля в результирующей таблице: date, order_type, orders_count
+SELECT date, order_type,
+COUNT(order_type) as orders_count
+FROM
+(SELECT user_id, order_id, time::DATE as date,
+CASE 
+WHEN MIN(time) OVER(PARTITION BY user_id) = time THEN 'Первый' ELSE 'Повторный' END AS order_type
+FROM user_actions
+WHERE order_id NOT IN (SELECT order_id FROM user_actions WHERE action = 'cancel_order')) q1
+GROUP BY date, order_type
+ORDER BY date, order_type
+-- Задание 11:
+-- К запросу, полученному на предыдущем шаге, примените оконную функцию и для каждого дня 
+-- посчитайте долю первых и повторных заказов. Сохраните структуру полученной ранее таблицы
+-- и добавьте только одну новую колонку с посчитанными значениями.
+-- Колонку с долей заказов каждой категории назовите orders_share. Значения в полученном столбце 
+-- округлите до двух знаков после запятой. В результат также включите количество заказов в группах, 
+-- посчитанное на предыдущем шаге. В расчётах по-прежнему учитывайте только неотменённые заказы.
+-- Результат отсортируйте сначала по возрастанию даты, затем по возрастанию значений в колонке с 
+-- типом заказа. Поля в результирующей таблице: date, order_type, orders_count, orders_share
+SELECT date, order_type,
+COUNT(order_type) as orders_count,
+ROUND(COUNT(order_type)::DECIMAL/SUM(COUNT(order_type)) OVER(PARTITION BY date), 2) as orders_share
+FROM
+(SELECT user_id, order_id, time::DATE as date,
+CASE 
+WHEN MIN(time) OVER(PARTITION BY user_id) = time THEN 'Первый' ELSE 'Повторный' END AS order_type
+FROM user_actions
+WHERE order_id NOT IN (SELECT order_id FROM user_actions WHERE action = 'cancel_order')) q1
+GROUP BY date, order_type
+ORDER BY date, order_type
+-- Задание 12:
+-- Примените оконную функцию к таблице products и с помощью агрегирующей функции в отдельной колонке
+-- для каждой записи проставьте среднюю цену всех товаров. Колонку с этим значением назовите 
+-- avg_price. Затем с помощью оконной функции и оператора FILTER в отдельной колонке рассчитайте
+-- среднюю цену товаров без учёта самого дорогого. Колонку с этим средним значением назовите 
+-- avg_price_filtered. Полученные средние значения в колонках avg_price и avg_price_filtered 
+-- округлите до двух знаков после запятой. Выведите всю информацию о товарах, включая значения
+-- в новых колонках. Результат отсортируйте сначала по убыванию цены товара, затем по возрастанию 
+-- id товара. Поля в результирующей таблице: product_id, name, price, avg_price, avg_price_filtered
+SELECT product_id, name, price,
+ROUND(AVG(price) OVER(), 2) as avg_price,
+ROUND(AVG(price) FILTER (WHERE price != (SELECT MAX(price) FROM products)) OVER(), 2) as avg_price_filtered
+FROM products
+ORDER BY price DESC, product_id
+-- Задание 13:
+-- Для каждой записи в таблице user_actions с помощью оконных функций и предложения FILTER посчитайте,
+-- сколько заказов сделал и сколько отменил каждый пользователь на момент совершения нового действия.
+-- Иными словами, для каждого пользователя в каждый момент времени посчитайте две накопительные 
+-- суммы — числа оформленных и числа отменённых заказов. Если пользователь оформляет заказ, 
+-- то число оформленных им заказов увеличивайте на 1, если отменяет — увеличивайте на 1 количество 
+-- отмен. Колонки с накопительными суммами числа оформленных и отменённых заказов назовите 
+-- соответственно created_orders и canceled_orders. На основе этих двух колонок для каждой 
+-- записи пользователя посчитайте показатель cancel_rate, т.е. долю отменённых заказов в общем 
+-- количестве оформленных заказов. Значения показателя округлите до двух знаков после запятой. 
+-- Колонку с ним назовите cancel_rate. В результате у вас должны получиться три новые колонки 
+-- с динамическими показателями, которые изменяются во времени с каждым новым действием пользователя.
+-- В результирующей таблице отразите все колонки из исходной таблицы вместе с новыми колонками. 
+-- Отсортируйте результат по колонкам user_id, order_id, time — по возрастанию значений в каждой.
+-- Добавьте в запрос оператор LIMIT и выведите только первые 1000 строк результирующей таблицы.
+-- Поля в результирующей таблице:
+-- user_id, order_id, action, time, created_orders, canceled_orders, cancel_rate
+SELECT user_id, order_id, action, time, created_orders, canceled_orders,
+ROUND(canceled_orders::DECIMAL/created_orders, 2) as cancel_rate
+FROM
+(SELECT user_id, order_id, action, time,
+COUNT(order_id) FILTER (WHERE action = 'create_order') OVER(PARTITION BY user_id
+                    ORDER BY time 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as created_orders,
+COUNT(order_id) FILTER (WHERE action = 'cancel_order') OVER(PARTITION BY user_id
+                    ORDER BY time 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as canceled_orders
+FROM user_actions) q1
+ORDER BY user_id, order_id, time
+LIMIT 1000
+-- Задание 14:
+-- Из таблицы courier_actions отберите топ 10% курьеров по количеству доставленных за всё время 
+-- заказов. Выведите id курьеров, количество доставленных заказов и порядковый номер курьера в 
+-- соответствии с числом доставленных заказов. У курьера, доставившего наибольшее число заказов,
+-- порядковый номер должен быть равен 1, а у курьера с наименьшим числом заказов — числу, равному 
+-- десяти процентам от общего количества курьеров в таблице courier_actions.
+-- При расчёте номера последнего курьера округляйте значение до целого числа.
+-- Колонки с количеством доставленных заказов и порядковым номером назовите соответственно 
+-- orders_count и courier_rank. Результат отсортируйте по возрастанию порядкового номера курьера.
+-- Поля в результирующей таблице: courier_id, orders_count, courier_rank 
+SELECT courier_id, orders_count, courier_rank
+FROM
+(SELECT courier_id, COUNT(order_id) as orders_count,
+ROW_NUMBER() OVER(ORDER BY COUNT(order_id) DESC, courier_id) as courier_rank,
+NTILE(10) OVER(ORDER BY COUNT(order_id) DESC, courier_id) as decile
+FROM courier_actions
+WHERE action = 'deliver_order'
+GROUP BY courier_id) q1
+WHERE decile = 1
+ORDER BY courier_rank
+-- Задание 15:
+-- С помощью оконной функции отберите из таблицы courier_actions всех курьеров, которые работают в
+-- нашей компании 10 и более дней. Также рассчитайте, сколько заказов они уже успели доставить за всё
+-- время работы. Будем считать, что наш сервис предлагает самые выгодные условия труда и поэтому
+-- за весь анализируемый период ни один курьер не уволился из компании. Возможные перерывы между 
+-- сменами не учитывайте — для нас важна только разница во времени между первым действием курьера 
+-- и текущей отметкой времени. Текущей отметкой времени, относительно которой необходимо рассчитывать
+-- продолжительность работы курьера, считайте время последнего действия в таблице courier_actions. 
+-- Учитывайте только целые дни, прошедшие с момента первого выхода курьера на работу (часы и минуты 
+-- не учитывайте). В результат включите три колонки: id курьера, продолжительность работы в днях 
+-- и число доставленных заказов. Две новые колонки назовите соответственно days_employed и 
+-- delivered_orders. Результат отсортируйте сначала по убыванию количества отработанных дней, 
+-- затем по возрастанию id курьера.
+-- Поля в результирующей таблице: courier_id, days_employed, delivered_orders 
+SELECT courier_id, days_employed, delivered_orders
+FROM
+(SELECT DISTINCT courier_id, 
+MAX(time) OVER()::DATE - MIN(time) OVER(PARTITION BY courier_id)::DATE as days_employed,
+COUNT(order_id) FILTER (WHERE action = 'deliver_order') OVER(PARTITION BY courier_id) as delivered_orders
+FROM courier_actions) q1
+WHERE days_employed >= 10
+ORDER BY days_employed DESC, courier_id
+-- Задание 16:
+-- На основе информации в таблицах orders и products рассчитайте стоимость каждого заказа, ежедневную
+-- выручку сервиса и долю стоимости каждого заказа в ежедневной выручке, выраженную в процентах. 
+-- В результат включите следующие колонки: id заказа, время создания заказа, стоимость заказа, выручку
+-- за день, в который был совершён заказ, а также долю стоимости заказа в выручке за день, выраженную в
+-- процентах.При расчёте долей округляйте их до трёх знаков после запятой.
+-- Результат отсортируйте сначала по убыванию даты совершения заказа (именно даты, а не времени),
+-- потом по убыванию доли заказа в выручке за день, затем по возрастанию id заказа.
+-- При проведении расчётов отменённые заказы не учитывайте.
+-- Поля в результирующей таблице:
+-- order_id, creation_time, order_price, daily_revenue, percentage_of_daily_revenue
+WITH product_table AS (
+SELECT order_id, creation_time,
+UNNEST(product_ids) as product_id
+FROM orders
+)
+SELECT order_id, creation_time, order_price, daily_revenue, percentage_of_daily_revenue
+FROM
+(SELECT DISTINCT pt.order_id, pt.creation_time,
+SUM(p.price) OVER(PARTITION BY pt.order_id) as order_price,
+SUM(p.price) OVER(PARTITION BY pt.creation_time::DATE) as daily_revenue,
+ROUND(100 * SUM(p.price) OVER(PARTITION BY pt.order_id)::DECIMAL / 
+        SUM(p.price) OVER(PARTITION BY pt.creation_time::DATE), 3) as percentage_of_daily_revenue
+FROM product_table pt
+LEFT JOIN products p
+ON pt.product_id = p.product_id
+WHERE order_id NOT IN (SELECT order_id FROM user_actions WHERE action = 'cancel_order')) q1
+ORDER BY creation_time::DATE DESC, percentage_of_daily_revenue DESC, order_id
+-- Задание 17:
+-- На основе информации в таблицах orders и products рассчитайте ежедневную выручку сервиса и отразите
+-- её в колонке daily_revenue. Затем с помощью оконных функций и функций смещения посчитайте ежедневный
+-- прирост выручки. Прирост выручки отразите как в абсолютных значениях, так и в % относительно 
+-- предыдущего дня. Колонку с абсолютным приростом назовите revenue_growth_abs, а колонку с относительным
+-- — revenue_growth_percentage. Для самого первого дня укажите прирост равным 0 в обеих колонках. 
+-- При проведении расчётов отменённые заказы не учитывайте. Результат отсортируйте по колонке с 
+-- датами по возрастанию. Метрики daily_revenue, revenue_growth_abs, revenue_growth_percentage 
+-- округлите до одного знака при помощи ROUND().
+-- Поля в результирующей таблице: date, daily_revenue, revenue_growth_abs, revenue_growth_percentage
+WITH orders_with_p_id AS (
+SELECT creation_time, order_id, UNNEST(product_ids) as product_id
+FROM orders
+WHERE order_id NOT IN (SELECT order_id FROM user_actions WHERE action = 'cancel_order')
+), dedupted AS (
+SELECT DISTINCT creation_time::DATE as date,
+SUM(p.price) OVER(PARTITION BY creation_time::DATE) as daily_revenue
+FROM orders_with_p_id o
+LEFT JOIN products p 
+ON o.product_id = p.product_id)
+
+SELECT *,
+ROUND(COALESCE(revenue_growth_abs * 100 / LAG(daily_revenue, 1) OVER(), 0), 1) as revenue_growth_percentage
+FROM
+(SELECT date, daily_revenue,
+ROUND(COALESCE(daily_revenue - LAG(daily_revenue, 1) OVER(), 0), 1) as revenue_growth_abs
+FROM dedupted) t1
+ORDER BY date
