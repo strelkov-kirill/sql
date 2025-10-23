@@ -335,3 +335,33 @@ FROM
 ROUND(COALESCE(daily_revenue - LAG(daily_revenue, 1) OVER(), 0), 1) as revenue_growth_abs
 FROM dedupted) t1
 ORDER BY date
+-- Задание 18:
+-- С помощью оконной функции рассчитайте медианную стоимость всех заказов из таблицы orders, оформленных
+-- в нашем сервисе. В качестве результата выведите одно число. Колонку с ним назовите median_price. 
+-- Отменённые заказы не учитывайте. Поле в результирующей таблице: median_price
+WITH 
+main_table AS (SELECT order_id, SUM (price) AS order_price, ROW_NUMBER () OVER (ORDER BY SUM (price)) AS row_number
+               FROM (SELECT order_id, unnest(product_ids) as product_id
+                     FROM orders
+                     WHERE  order_id not in (SELECT order_id
+                                             FROM   user_actions
+                                             WHERE  action = 'cancel_order')) t1
+               LEFT JOIN products using (product_id)
+               GROUP BY order_id
+),
+first_50 AS (SELECT order_price, row_number
+             FROM main_table
+             LIMIT (SELECT MAX(row_number)/2
+                    FROM main_table)
+),
+last_50 AS (SELECT order_price, row_number
+            FROM main_table
+            OFFSET (SELECT MAX(row_number)/2
+                    FROM main_table)
+)
+
+SELECT CASE
+       WHEN MOD(MAX (row_number), 2) = 0 THEN ((SELECT MAX(order_price) FROM first_50) + (SELECT MIN(order_price) FROM last_50))/2
+       ELSE (SELECT MAX(order_price) FROM main_table WHERE row_number = (SELECT MAX (row_number)/2+1 FROM main_table))
+       END AS median_price
+FROM main_table;
